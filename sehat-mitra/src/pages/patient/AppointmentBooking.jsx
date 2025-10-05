@@ -9,6 +9,9 @@ import {
   UserIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
+  VideoCameraIcon,
+  PhoneIcon,
+  BuildingOffice2Icon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { toast } from 'react-hot-toast';
@@ -33,6 +36,7 @@ const AppointmentBooking = () => {
     symptoms: '',
     urgency: 'routine',
     notes: '',
+    consultationType: 'video_consultation', // New field for consultation type
   });
   const [loading, setLoading] = useState(false);
 
@@ -82,6 +86,7 @@ const AppointmentBooking = () => {
         symptoms: appointmentDetails.symptoms,
         urgency: appointmentDetails.urgency,
         notes: appointmentDetails.notes,
+        consultationType: appointmentDetails.consultationType,
       };
 
       const response = await patientService.bookAppointment(appointmentData);
@@ -361,8 +366,35 @@ const AppointmentBooking = () => {
               <span className="font-medium">{selectedTime}</span>
             </div>
             <div className="flex justify-between">
+              <span className="text-gray-600">Consultation Type:</span>
+              <span className="font-medium capitalize flex items-center">
+                {appointmentDetails.consultationType === 'video_consultation' && (
+                  <span className="flex items-center text-blue-600">
+                    <VideoCameraIcon className="w-4 h-4 mr-1" />
+                    Video Call
+                  </span>
+                )}
+                {appointmentDetails.consultationType === 'in_person' && (
+                  <span className="flex items-center text-green-600">
+                    <BuildingOffice2Icon className="w-4 h-4 mr-1" />
+                    In-Person Visit
+                  </span>
+                )}
+                {appointmentDetails.consultationType === 'phone_consultation' && (
+                  <span className="flex items-center text-orange-600">
+                    <PhoneIcon className="w-4 h-4 mr-1" />
+                    Phone Call
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-gray-600">Consultation Fee:</span>
-              <span className="font-medium text-green-600">₹{selectedDoctor?.consultationFee}</span>
+              <span className="font-medium text-green-600">
+                ₹{appointmentDetails.consultationType === 'phone_consultation' 
+                  ? Math.round(selectedDoctor?.consultationFee * 0.8) 
+                  : selectedDoctor?.consultationFee}
+              </span>
             </div>
           </div>
         </div>
@@ -393,6 +425,113 @@ const AppointmentBooking = () => {
               <option value="urgent">Urgent</option>
               <option value="emergency">Emergency</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Consultation Type *</label>
+            <div className="space-y-3">
+              <div className={`flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                appointmentDetails.consultationType === 'video_consultation' 
+                  ? 'border-indigo-500 bg-indigo-50' 
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}>
+                <input
+                  type="radio"
+                  id="video_consultation"
+                  name="consultationType"
+                  value="video_consultation"
+                  checked={appointmentDetails.consultationType === 'video_consultation'}
+                  onChange={(e) => setAppointmentDetails({ ...appointmentDetails, consultationType: e.target.value })}
+                  className="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                />
+                <label htmlFor="video_consultation" className="flex-1 cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded-full mr-4">
+                        <VideoCameraIcon className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900">Video Consultation</div>
+                        <div className="text-sm text-gray-600">Meet virtually via secure video call</div>
+                        <div className="text-xs text-blue-600 font-medium mt-1">🌟 Most Popular</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-600">₹{selectedDoctor?.consultationFee}</div>
+                      <div className="text-xs text-gray-500">Standard Rate</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <div className={`flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                appointmentDetails.consultationType === 'in_person' 
+                  ? 'border-green-500 bg-green-50' 
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}>
+                <input
+                  type="radio"
+                  id="in_person"
+                  name="consultationType"
+                  value="in_person"
+                  checked={appointmentDetails.consultationType === 'in_person'}
+                  onChange={(e) => setAppointmentDetails({ ...appointmentDetails, consultationType: e.target.value })}
+                  className="h-4 w-4 text-green-600 border-gray-300 focus:ring-green-500"
+                />
+                <label htmlFor="in_person" className="flex-1 cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex items-center justify-center w-10 h-10 bg-green-100 rounded-full mr-4">
+                        <BuildingOffice2Icon className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900">In-Person Visit</div>
+                        <div className="text-sm text-gray-600">Visit doctor's clinic in person</div>
+                        <div className="text-xs text-green-600 font-medium mt-1">🏥 Traditional</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-600">₹{selectedDoctor?.consultationFee}</div>
+                      <div className="text-xs text-gray-500">Standard Rate</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <div className={`flex items-center space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                appointmentDetails.consultationType === 'phone_consultation' 
+                  ? 'border-orange-500 bg-orange-50' 
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}>
+                <input
+                  type="radio"
+                  id="phone_consultation"
+                  name="consultationType"
+                  value="phone_consultation"
+                  checked={appointmentDetails.consultationType === 'phone_consultation'}
+                  onChange={(e) => setAppointmentDetails({ ...appointmentDetails, consultationType: e.target.value })}
+                  className="h-4 w-4 text-orange-600 border-gray-300 focus:ring-orange-500"
+                />
+                <label htmlFor="phone_consultation" className="flex-1 cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex items-center justify-center w-10 h-10 bg-orange-100 rounded-full mr-4">
+                        <PhoneIcon className="w-5 h-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900">Phone Consultation</div>
+                        <div className="text-sm text-gray-600">Consult over a secure phone call</div>
+                        <div className="text-xs text-orange-600 font-medium mt-1">💰 20% Discount</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-600">₹{Math.round(selectedDoctor?.consultationFee * 0.8)}</div>
+                      <div className="text-xs text-gray-500 line-through">₹{selectedDoctor?.consultationFee}</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div>

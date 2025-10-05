@@ -32,6 +32,66 @@ const AppointmentHistory = () => {
   const [review, setReview] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Date and time formatting functions
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Invalid date';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return 'Invalid time';
+    try {
+      const [hours, minutes] = timeString.split(':');
+      const date = new Date();
+      date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return 'Invalid time';
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'confirmed': return 'bg-green-100 text-green-800';
+      case 'in_progress': return 'bg-yellow-100 text-yellow-800';
+      case 'completed': return 'bg-gray-100 text-gray-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'no_show': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'scheduled': return <ClockIcon className="h-3 w-3" />;
+      case 'confirmed': return <CalendarDaysIcon className="h-3 w-3" />;
+      case 'in_progress': return <VideoCameraIcon className="h-3 w-3" />;
+      case 'completed': return <DocumentTextIcon className="h-3 w-3" />;
+      case 'cancelled': return null;
+      case 'no_show': return null;
+      default: return null;
+    }
+  };
+
+  const canCancelOrReschedule = (appointment) => {
+    const appointmentDateTime = new Date(`${appointment.appointmentDate}T${appointment.startTime}`);
+    const now = new Date();
+    const hoursDiff = (appointmentDateTime - now) / (1000 * 60 * 60);
+    
+    return hoursDiff > 24 && ['scheduled', 'confirmed'].includes(appointment.status);
+  };
+
   useEffect(() => {
     fetchAppointments();
   }, []);
@@ -67,24 +127,24 @@ const AppointmentHistory = () => {
         case 'today':
           filterDate.setDate(now.getDate());
           filtered = filtered.filter(appointment => 
-            new Date(appointment.date).toDateString() === filterDate.toDateString()
+            new Date(appointment.appointmentDate).toDateString() === filterDate.toDateString()
           );
           break;
         case 'week':
           filterDate.setDate(now.getDate() - 7);
           filtered = filtered.filter(appointment => 
-            new Date(appointment.date) >= filterDate
+            new Date(appointment.appointmentDate) >= filterDate
           );
           break;
         case 'month':
           filterDate.setMonth(now.getMonth() - 1);
           filtered = filtered.filter(appointment => 
-            new Date(appointment.date) >= filterDate
+            new Date(appointment.appointmentDate) >= filterDate
           );
           break;
         case 'upcoming':
           filtered = filtered.filter(appointment => 
-            new Date(appointment.date) > now
+            new Date(appointment.appointmentDate) > now
           );
           break;
       }
@@ -92,12 +152,12 @@ const AppointmentHistory = () => {
 
     if (filters.doctor) {
       filtered = filtered.filter(appointment =>
-        appointment.doctor.name.toLowerCase().includes(filters.doctor.toLowerCase())
+        `${appointment.doctor.firstName} ${appointment.doctor.lastName}`.toLowerCase().includes(filters.doctor.toLowerCase())
       );
     }
 
     // Sort by date (most recent first)
-    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    filtered.sort((a, b) => new Date(b.appointmentDate) - new Date(a.appointmentDate));
 
     setFilteredAppointments(filtered);
   };
@@ -139,53 +199,7 @@ const AppointmentHistory = () => {
     }
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      scheduled: 'bg-blue-100 text-blue-800',
-      confirmed: 'bg-green-100 text-green-800',
-      completed: 'bg-purple-100 text-purple-800',
-      cancelled: 'bg-red-100 text-red-800',
-      rescheduled: 'bg-yellow-100 text-yellow-800',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
-  };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'scheduled':
-      case 'confirmed':
-        return <CalendarDaysIcon className="h-4 w-4" />;
-      case 'completed':
-        return <DocumentTextIcon className="h-4 w-4" />;
-      case 'cancelled':
-        return <ClockIcon className="h-4 w-4" />;
-      default:
-        return <CalendarDaysIcon className="h-4 w-4" />;
-    }
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const formatTime = (timeString) => {
-    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const canCancelOrReschedule = (appointment) => {
-    const appointmentDateTime = new Date(`${appointment.date}T${appointment.time}`);
-    const now = new Date();
-    const hoursDiff = (appointmentDateTime - now) / (1000 * 60 * 60);
-    
-    return hoursDiff > 24 && ['scheduled', 'confirmed'].includes(appointment.status);
-  };
 
   const renderStarRating = (rating, interactive = false, onRatingChange = null) => {
     return (
@@ -314,12 +328,14 @@ const AppointmentHistory = () => {
                   
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {appointment.doctor.name}
+                      Dr. {appointment.doctor.firstName} {appointment.doctor.lastName}
                     </h3>
-                    <p className="text-gray-600 capitalize">{appointment.doctor.specialty}</p>
+                    <p className="text-gray-600 capitalize">
+                      {appointment.doctor.doctorInfo?.specialization?.[0] || 'General Medicine'}
+                    </p>
                     <div className="flex items-center text-sm text-gray-500 mt-1">
                       <MapPinIcon className="h-4 w-4 mr-1" />
-                      {appointment.doctor.location}
+                      {appointment.doctor.profile?.location || 'Not specified'}
                     </div>
                   </div>
                 </div>
@@ -330,7 +346,7 @@ const AppointmentHistory = () => {
                     <div>
                       <p className="text-sm text-gray-600">Date & Time</p>
                       <p className="font-medium">
-                        {formatDate(appointment.date)} at {formatTime(appointment.time)}
+                        {formatDate(appointment.appointmentDate)} at {formatTime(appointment.startTime)}
                       </p>
                     </div>
                     <div>
@@ -356,10 +372,17 @@ const AppointmentHistory = () => {
                     </div>
                   </div>
 
-                  {appointment.symptoms && (
+                  {(appointment.symptoms && appointment.symptoms.length > 0) && (
                     <div className="mt-3">
                       <p className="text-sm text-gray-600">Symptoms</p>
-                      <p className="text-sm">{appointment.symptoms}</p>
+                      <p className="text-sm">{Array.isArray(appointment.symptoms) ? appointment.symptoms.join(', ') : appointment.symptoms}</p>
+                    </div>
+                  )}
+                  
+                  {appointment.reason && (
+                    <div className="mt-3">
+                      <p className="text-sm text-gray-600">Reason</p>
+                      <p className="text-sm">{appointment.reason}</p>
                     </div>
                   )}
                 </div>
@@ -502,7 +525,9 @@ const AppointmentHistory = () => {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Symptoms</label>
-                    <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">{selectedAppointment.symptoms}</p>
+                    <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">
+                      {Array.isArray(selectedAppointment.symptoms) ? selectedAppointment.symptoms.join(', ') : selectedAppointment.symptoms}
+                    </p>
                   </div>
                   
                   {selectedAppointment.notes && (

@@ -179,48 +179,6 @@ router.put('/medical-history', async (req, res) => {
   }
 });
 
-// Get patient dashboard data
-router.get('/dashboard', async (req, res) => {
-  try {
-    if (req.user.role !== 'patient') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. Only patients can access this route.'
-      });
-    }
-
-    // Return minimal dashboard data for now
-    const dashboard = {
-      appointmentStats: {
-        total: 0,
-        completed: 0,
-        completionRate: 0,
-        statusBreakdown: []
-      },
-      upcomingAppointments: [],
-      recentPrescriptions: [],
-      loyaltyMetrics: {
-        totalSpent: 0,
-        loyaltyScore: 0
-      },
-      memberSince: new Date()
-    };
-
-    res.json({
-      success: true,
-      dashboard
-    });
-
-  } catch (error) {
-    console.error('Get patient dashboard error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get patient dashboard',
-      error: error.message
-    });
-  }
-});
-
 // Search doctors
 router.get('/search-doctors', async (req, res) => {
   try {
@@ -341,7 +299,7 @@ router.post('/appointments/book', async (req, res) => {
       });
     }
 
-    const { doctorId, date, time, symptoms, urgency, notes } = req.body;
+    const { doctorId, date, time, symptoms, urgency, notes, consultationType } = req.body;
 
     // Validate required fields
     if (!doctorId || !date || !time) {
@@ -382,6 +340,10 @@ router.post('/appointments/book', async (req, res) => {
       });
     }
 
+    // Calculate fee based on consultation type
+    const baseFee = doctor.doctorInfo?.consultationFee || 500;
+    const consultationFee = consultationType === 'phone_consultation' ? Math.round(baseFee * 0.8) : baseFee;
+
     // Create appointment with correct field mapping
     const appointmentData = {
       patient: req.user.userId,
@@ -389,10 +351,11 @@ router.post('/appointments/book', async (req, res) => {
       appointmentDate: new Date(date),
       startTime: time,
       endTime: calculateEndTime(time, 30), // 30 minutes default
+      type: consultationType || 'video_consultation', // Map to appointment type field
       reason: symptoms || 'General consultation', // Map symptoms to reason (required field)
       symptoms: symptoms ? [symptoms] : [], // Convert to array
       urgency: mapUrgencyLevel(urgency), // Map urgency to valid enum values
-      fee: doctor.doctorInfo?.consultationFee || 500, // Required fee field
+      fee: consultationFee, // Adjusted fee based on consultation type
       status: 'scheduled'
     };
 
@@ -567,21 +530,67 @@ router.get('/dashboard', async (req, res) => {
       });
     }
 
-    // Return minimal dashboard data for now
+    const patientId = req.user.userId;
+    const Appointment = require('../models/Appointment');
+    
+    // Get all appointments for this patient
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate('doctor', 'firstName lastName doctorInfo.specialization')
+      .sort({ appointmentDate: -1 });
+
+    // Calculate appointment stats
+    const totalAppointments = appointments.length;
+    const completedAppointments = appointments.filter(apt => apt.status === 'completed').length;
+    const completionRate = totalAppointments > 0 ? 
+      Math.round((completedAppointments / totalAppointments) * 100) : 0;
+
+    // Get status breakdown
+    const statusBreakdown = appointments.reduce((acc, apt) => {
+      acc[apt.status] = (acc[apt.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Get upcoming appointments (next 30 days)
+    const now = new Date();
+    const next30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const upcomingAppointments = appointments.filter(apt => {
+      const aptDate = new Date(apt.appointmentDate);
+      return aptDate >= now && aptDate <= next30Days && 
+             ['scheduled', 'confirmed'].includes(apt.status);
+    }).slice(0, 5);
+
+    // Get recent prescriptions
+    const recentPrescriptions = appointments
+      .filter(apt => apt.prescription && apt.prescription.medications.length > 0)
+      .slice(0, 5);
+
+    // Calculate total spent and loyalty metrics
+    const totalSpent = appointments
+      .filter(apt => apt.status === 'completed')
+      .reduce((sum, apt) => sum + (apt.fee || 0), 0);
+
+    const loyaltyScore = Math.min(Math.floor(totalSpent / 1000) + completedAppointments, 100);
+
+    // Get user registration date
+    const user = await User.findById(patientId);
+    
     const dashboard = {
       appointmentStats: {
-        total: 0,
-        completed: 0,
-        completionRate: 0,
-        statusBreakdown: []
+        total: totalAppointments,
+        completed: completedAppointments,
+        completionRate,
+        statusBreakdown: Object.entries(statusBreakdown).map(([status, count]) => ({
+          _id: status, // Frontend expects _id field
+          count
+        }))
       },
-      upcomingAppointments: [],
-      recentPrescriptions: [],
+      upcomingAppointments,
+      recentPrescriptions,
       loyaltyMetrics: {
-        totalSpent: 0,
-        loyaltyScore: 0
+        totalSpent,
+        loyaltyScore
       },
-      memberSince: new Date()
+      memberSince: user?.createdAt || new Date()
     };
 
     res.json({

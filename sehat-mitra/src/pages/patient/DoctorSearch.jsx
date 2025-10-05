@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import api from '../../services/api';
+import LeadCaptureModal from '../../components/LeadCaptureModal';
 
 const DoctorSearch = () => {
   const [doctors, setDoctors] = useState([]);
@@ -33,6 +34,8 @@ const DoctorSearch = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState(new Set());
+  const [showLeadModal, setShowLeadModal] = useState(false);
+  const [viewCount, setViewCount] = useState(0);
 
   useEffect(() => {
     fetchDoctors();
@@ -193,6 +196,17 @@ const DoctorSearch = () => {
     'pediatrics', 'psychiatry', 'general', 'gynecology',
     'ophthalmology', 'dentistry'
   ];
+
+  const handleDoctorView = (doctor) => {
+    setViewCount(prev => {
+      const newCount = prev + 1;
+      // Show lead capture after viewing 3 doctors without booking
+      if (newCount >= 3) {
+        setTimeout(() => setShowLeadModal(true), 2000);
+      }
+      return newCount;
+    });
+  };
 
   if (loading) {
     return (
@@ -372,7 +386,11 @@ const DoctorSearch = () => {
             {/* Doctor Cards */}
             <div className="space-y-6">
               {filteredDoctors.map((doctor) => (
-                <div key={doctor._id} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                <div
+                  key={doctor._id}
+                  className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
+                  onClick={() => handleDoctorView(doctor)}
+                >
                   <div className="flex flex-col md:flex-row gap-6">
                     {/* Doctor Image */}
                     <div className="flex-shrink-0">
@@ -512,6 +530,13 @@ const DoctorSearch = () => {
           </div>
         </div>
       </div>
+
+      {/* Lead Capture Modal */}
+      <LeadCaptureModal
+        isOpen={showLeadModal}
+        onClose={() => setShowLeadModal(false)}
+        leadType="patient"
+      />
     </div>
   );
 };

@@ -248,6 +248,18 @@ const leadService = {
     return response.data;
   },
 
+  // Convert lead (alias for convertToPatient)
+  convertLead: async (leadId) => {
+    const response = await api.post(`/leads/${leadId}/convert`);
+    return response.data;
+  },
+
+  // Add interaction to lead
+  addInteraction: async (leadId, interaction) => {
+    const response = await api.post(`/leads/${leadId}/interaction`, interaction);
+    return response.data;
+  },
+
   // Analytics
   getStats: async () => {
     const response = await api.get('/leads/stats');

@@ -103,94 +103,206 @@ class PriorityQueue {
 }
 
 /**
- * Lead qualification engine using Priority Queue
+ * Advanced Lead Qualification Engine
+ * Automatically scores and prioritizes leads based on multiple factors
  */
 class LeadQualificationEngine {
   constructor() {
-    this.leadQueue = new PriorityQueue((a, b) => {
-      // Higher priority first (negative comparison for max heap behavior)
-      return b.priority - a.priority;
-    });
+    this.leadQueue = new PriorityQueue((a, b) => b.priority - a.priority);
+    this.conversionFactors = {
+      // Patient lead scoring factors
+      patient: {
+        urgentConditions: ['chest pain', 'breathing', 'emergency', 'urgent', 'severe'],
+        chronicConditions: ['diabetes', 'hypertension', 'heart', 'chronic'],
+        ageRisk: ['elderly', 'senior', 'age'],
+        previousPatient: 3, // Bonus points for returning patients
+      },
+      // Doctor lead scoring factors
+      doctor: {
+        highDemandSpecialties: ['cardiology', 'psychiatry', 'dermatology'],
+        experienceKeywords: ['years', 'experience', 'specialist', 'consultant'],
+        qualifications: ['MD', 'MBBS', 'MS', 'DM', 'PhD'],
+      }
+    };
   }
 
-  // Calculate lead priority score
-  calculatePriority(lead) {
-    let priority = 0;
-
-    // Base priority by lead type
-    if (lead.leadType === 'doctor') priority += 3;
-    if (lead.leadType === 'patient') priority += 2;
-
-    // Source priority
-    const sourcePriority = {
-      referral: 4,
-      advertisement: 3,
-      website: 2,
-      social_media: 1
+  /**
+   * Calculate lead score based on multiple factors
+   */
+  calculateLeadScore(lead) {
+    let score = 0;
+    
+    // Base score from source
+    const sourceScores = {
+      'referral': 8,
+      'social_media': 6,
+      'advertisement': 5,
+      'website': 4
     };
-    priority += sourcePriority[lead.source] || 0;
+    score += sourceScores[lead.source] || 4;
 
-    // Urgency for patients
-    if (lead.medicalCondition) {
-      const urgentConditions = ['emergency', 'chest pain', 'breathing difficulty', 'severe pain'];
-      if (urgentConditions.some(condition => 
-        lead.medicalCondition.toLowerCase().includes(condition))) {
-        priority += 5;
-      }
+    // Time-based urgency (newer leads get higher priority)
+    const hoursSinceCreation = (Date.now() - new Date(lead.createdAt)) / (1000 * 60 * 60);
+    if (hoursSinceCreation < 1) score += 3; // Very recent
+    else if (hoursSinceCreation < 24) score += 2; // Recent
+    else if (hoursSinceCreation < 72) score += 1; // Somewhat recent
+
+    // Lead type specific scoring
+    if (lead.leadType === 'patient') {
+      score += this.scorePatientLead(lead);
+    } else if (lead.leadType === 'doctor') {
+      score += this.scoreDoctorLead(lead);
     }
 
-    // Specialization demand for doctors
-    if (lead.specialization) {
-      const highDemandSpecs = ['cardiology', 'neurology', 'oncology', 'psychiatry'];
-      if (highDemandSpecs.includes(lead.specialization.toLowerCase())) {
-        priority += 3;
-      }
-    }
-
-    // Interaction history
+    // Contact information completeness
+    if (lead.email && lead.phone) score += 1;
+    
+    // Previous interactions boost
     if (lead.interactions && lead.interactions.length > 0) {
-      priority += Math.min(lead.interactions.length * 0.5, 2);
+      score += Math.min(lead.interactions.length, 3); // Max 3 bonus points
     }
 
-    return Math.min(priority, 10); // Cap at 10
+    return Math.min(Math.max(score, 1), 10); // Ensure score is between 1-10
   }
 
-  // Add lead to qualification queue
-  addLead(lead) {
-    const enrichedLead = {
-      ...lead,
-      priority: this.calculatePriority(lead),
-      addedAt: new Date()
+  /**
+   * Score patient leads based on medical urgency and engagement
+   */
+  scorePatientLead(lead) {
+    let patientScore = 0;
+    const condition = (lead.medicalCondition || '').toLowerCase();
+
+    // Check for urgent conditions
+    if (this.conversionFactors.patient.urgentConditions.some(keyword => 
+      condition.includes(keyword))) {
+      patientScore += 4;
+    }
+
+    // Check for chronic conditions (high lifetime value)
+    if (this.conversionFactors.patient.chronicConditions.some(keyword => 
+      condition.includes(keyword))) {
+      patientScore += 2;
+    }
+
+    // Age-related risk factors
+    if (this.conversionFactors.patient.ageRisk.some(keyword => 
+      condition.includes(keyword))) {
+      patientScore += 2;
+    }
+
+    // Specific symptoms mentioned
+    if (condition && condition.length > 10) {
+      patientScore += 1; // Detailed description shows engagement
+    }
+
+    return patientScore;
+  }
+
+  /**
+   * Score doctor leads based on specialty demand and qualifications
+   */
+  scoreDoctorLead(lead) {
+    let doctorScore = 0;
+    const specialization = (lead.specialization || '').toLowerCase();
+
+    // High-demand specialties
+    if (this.conversionFactors.doctor.highDemandSpecialties.some(specialty => 
+      specialization.includes(specialty))) {
+      doctorScore += 3;
+    }
+
+    // Experience indicators
+    if (this.conversionFactors.doctor.experienceKeywords.some(keyword => 
+      (lead.notes && lead.notes.some(note => note.content.toLowerCase().includes(keyword))))) {
+      doctorScore += 2;
+    }
+
+    // Qualification keywords in notes
+    if (lead.notes && lead.notes.some(note => 
+      this.conversionFactors.doctor.qualifications.some(qual => 
+        note.content.includes(qual)))) {
+      doctorScore += 2;
+    }
+
+    return doctorScore;
+  }
+
+  /**
+   * Add lead to qualification queue
+   */
+  addLead(leadData) {
+    const score = this.calculateLeadScore(leadData);
+    const qualifiedLead = {
+      ...leadData,
+      priority: score,
+      qualificationDate: new Date(),
+      nextFollowUpSuggested: this.suggestFollowUpTime(score, leadData.leadType)
     };
 
-    this.leadQueue.enqueue(enrichedLead);
-    return enrichedLead;
+    this.leadQueue.enqueue(qualifiedLead);
+    return qualifiedLead;
   }
 
-  // Get next lead to process
+  /**
+   * Suggest optimal follow-up time based on lead score and type
+   */
+  suggestFollowUpTime(score, leadType) {
+    const now = new Date();
+    
+    if (score >= 8) {
+      // High priority - follow up within 30 minutes
+      return new Date(now.getTime() + 30 * 60 * 1000);
+    } else if (score >= 6) {
+      // Medium-high priority - follow up within 2 hours
+      return new Date(now.getTime() + 2 * 60 * 60 * 1000);
+    } else if (score >= 4) {
+      // Medium priority - follow up within 4 hours
+      return new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    } else {
+      // Low priority - follow up within 24 hours
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    }
+  }
+
+  /**
+   * Get next lead to process
+   */
   getNextLead() {
     return this.leadQueue.dequeue();
   }
 
-  // Get queue status
+  /**
+   * Get current queue status
+   */
   getQueueStatus() {
+    const leads = [...this.leadQueue.heap];
     return {
-      totalLeads: this.leadQueue.size(),
-      topPriorityLead: this.leadQueue.peek(),
-      allLeads: this.leadQueue.getAll().sort((a, b) => b.priority - a.priority)
+      totalLeads: leads.length,
+      highPriorityCount: leads.filter(l => l.priority >= 8).length,
+      mediumPriorityCount: leads.filter(l => l.priority >= 6 && l.priority < 8).length,
+      lowPriorityCount: leads.filter(l => l.priority < 6).length,
+      averageScore: leads.length > 0 ? 
+        (leads.reduce((sum, l) => sum + l.priority, 0) / leads.length).toFixed(1) : 0
     };
   }
 
-  // Process multiple leads and return sorted by priority
-  processLeads(leads) {
-    leads.forEach(lead => this.addLead(lead));
-    
-    const processed = [];
+  /**
+   * Re-score existing leads (useful for periodic updates)
+   */
+  rescoreLeads() {
+    const allLeads = [];
     while (!this.leadQueue.isEmpty()) {
-      processed.push(this.leadQueue.dequeue());
+      allLeads.push(this.leadQueue.dequeue());
     }
-    
-    return processed;
+
+    allLeads.forEach(lead => {
+      const newScore = this.calculateLeadScore(lead);
+      lead.priority = newScore;
+      lead.nextFollowUpSuggested = this.suggestFollowUpTime(newScore, lead.leadType);
+      this.leadQueue.enqueue(lead);
+    });
+
+    return this.getQueueStatus();
   }
 }
 

@@ -35,7 +35,11 @@ const PatientDashboard = () => {
     try {
       const response = await patientService.getDashboardStats();
       if (response.success) {
+        console.log('✅ Dashboard data loaded:', response.dashboard);
+        console.log('💰 Total spent will be:', response.dashboard.loyaltyMetrics?.totalSpent);
         setDashboardData(response.dashboard);
+      } else {
+        console.error('Dashboard API returned error:', response.message);
       }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -279,11 +283,20 @@ const PatientDashboard = () => {
                     {dashboardData.appointmentStats.completionRate}%
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Total Spent</span>
-                  <span className="font-semibold">
-                    ₹{dashboardData.loyaltyMetrics?.totalSpent || 0}
-                  </span>
+                
+                {/* Enhanced Total Spent Display */}
+                <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center">
+                      <span className="text-gray-700 font-medium">💰 Total Amount Spent</span>
+                    </div>
+                    <span className="font-bold text-2xl text-green-700">
+                      ₹{dashboardData.loyaltyMetrics?.totalSpent || 0}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    From {dashboardData.appointmentStats.completed} completed consultations
+                  </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Loyalty Level</span>

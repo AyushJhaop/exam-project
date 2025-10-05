@@ -346,4 +346,189 @@ router.post('/bulk-process', async (req, res) => {
   }
 });
 
+// Convert lead to user account
+router.post('/:id/convert', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = await Lead.findById(id);
+    
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found'
+      });
+    }
+
+    if (lead.converted) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lead already converted'
+      });
+    }
+
+    // Update lead status
+    lead.converted = true;
+    lead.conversionDate = new Date();
+    lead.stage = 'converted';
+    await lead.save();
+
+    // Remove from priority queue
+    qualificationEngine.rescoreLeads();
+
+    res.json({
+      success: true,
+      message: 'Lead converted successfully',
+      lead,
+      registrationData: {
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        email: lead.email,
+        phone: lead.phone,
+        role: lead.leadType,
+        specialization: lead.specialization
+      }
+    });
+
+  } catch (error) {
+    console.error('Convert lead error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to convert lead',
+      error: error.message
+    });
+  }
+});
+
+// Add interaction to lead
+router.post('/:id/interaction', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, outcome, nextFollowUp } = req.body;
+
+    const lead = await Lead.findById(id);
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found'
+      });
+    }
+
+    const interaction = {
+      type,
+      date: new Date(),
+      outcome,
+      nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : null
+    };
+
+    lead.interactions.push(interaction);
+    
+    // Update lead priority based on interaction
+    const updatedLead = qualificationEngine.addLead(lead.toObject());
+    lead.priority = updatedLead.priority;
+    
+    await lead.save();
+
+    res.json({
+      success: true,
+      message: 'Interaction logged successfully',
+      lead
+    });
+
+  } catch (error) {
+    console.error('Add interaction error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to log interaction',
+      error: error.message
+    });
+  }
+});
+
+// Get lead statistics
+router.get('/stats', async (req, res) => {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const [
+      todayLeads,
+      monthlyLeads,
+      totalLeads,
+      convertedLeads,
+      pendingFollowUp
+    ] = await Promise.all([
+      Lead.countDocuments({ createdAt: { $gte: todayStart } }),
+      Lead.countDocuments({ createdAt: { $gte: monthStart } }),
+      Lead.countDocuments({}),
+      Lead.countDocuments({ converted: true }),
+      Lead.countDocuments({ 
+        stage: 'prospect',
+        'interactions.nextFollowUp': { $lte: now }
+      })
+    ]);
+
+    const conversionRate = totalLeads > 0 ? 
+      ((convertedLeads / totalLeads) * 100).toFixed(1) : 0;
+
+    const stats = {
+      todayLeads,
+      monthlyLeads,
+      totalLeads,
+      convertedLeads,
+      pendingFollowUp,
+      conversionRate: parseFloat(conversionRate),
+      queueStatus: qualificationEngine.getQueueStatus()
+    };
+
+    res.json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error('Get lead stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get lead statistics',
+      error: error.message
+    });
+  }
+});
+
+// Get leads due for follow-up
+router.get('/follow-up-due', async (req, res) => {
+  try {
+    const now = new Date();
+    
+    const leadsdue = await Lead.find({
+      stage: 'prospect',
+      $or: [
+        { 'interactions.nextFollowUp': { $lte: now } },
+        { 
+          interactions: { $size: 0 },
+          createdAt: { $lte: new Date(now.getTime() - 24 * 60 * 60 * 1000) }
+        }
+      ]
+    })
+    .populate('assignedTo', 'firstName lastName email')
+    .sort({ priority: -1, createdAt: 1 })
+    .limit(50);
+
+    res.json({
+      success: true,
+      leads: leadsdue,
+      count: leadsdue.length
+    });
+
+  } catch (error) {
+    console.error('Get follow-up due leads error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get follow-up due leads',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
